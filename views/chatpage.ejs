@@ -1,0 +1,145 @@
+<% include ./partial/header.ejs %>
+
+<h2 class="mb-4">Hi, welcome <%= user.username %>!</h2>
+<div class="row">
+
+    <div class="col-md-3">
+        <ul class="list-group">
+            <% if (Users.length > 0) { %>
+                <% Users.forEach(function (users) { %>
+                    <li class="list-group list-group-item-dark my-2 cursor-pointer user-list" data-id="<%=users._id %>">
+                        <%= users.username %>
+                        <% if (users.is_online === "1") { %>
+                            <sup style="margin-top: 5%; font-size: 14px;" class="online-status"
+                                id="<%=users._id %>-status">online</sup>
+                        <% } else { %>
+                            <sup style="margin-top: 5%; font-size: 14px;" class="offline-status"
+                                id="<%=users._id %>-status">offline</sup>
+                        <% } %>
+                    </li>
+                <% }) %>
+            <% } %>
+        </ul>
+    </div>
+
+    <div class="col-md-9">
+        <h3 class="start-head">Click to start chat</h3>
+        <div class="chat-section" id="chat-section" style="display: none;">
+            <div class="chat-container" id="chat-container"></div>
+            <form action="" id="chat-form">
+                <input type="text" class="border" name="message" placeholder="Enter message" id="message" required>
+                <input class="btn btn-primary" type="submit" value="Send message">
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"
+    integrity="sha512-b94Z6431JyXY14iSXwgzeZurHHRNkLt9d6bAHt7BZT38eqV+GyngIi/tVye4jBKPYQ2lBdRs0glww4fmpuLRwA=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+        var receiver_id ;
+    var head = document.querySelector(".start-head");
+    var chatSection = document.querySelector("#chat-section");
+    var chatContainer = document.querySelector("#chat-container");
+    var list = document.querySelector(".list-group");
+    var sender_id = `<%= user._id %>`;
+    var socket = io("/user-namespace", {
+        auth: {
+            token: `<%= user._id %>`
+        }
+    });
+    list.addEventListener("click", function (dets) {
+        if(dets.target.classList[4] === "user-list") {    
+            var user_id = dets.target.getAttribute("data-id");
+            receiver_id = user_id;
+            chatSection.style.display = "block";
+            head.style.display = "none";
+            socket.emit('existchat',{sender_id:sender_id,receiver_id:receiver_id})
+           dets.preventDefault();
+        }
+       
+    });
+    // Get user status
+    socket.on("getOnlineUser", function (data) {
+        document.getElementById(`${data.user_id}-status`).innerText = "online";
+        document.getElementById(`${data.user_id}-status`).classList.add("online-status");
+        document.getElementById(`${data.user_id}-status`).classList.remove("offline-status");
+    });
+
+    socket.on("getOfflineUser", function (data) {
+        document.getElementById(`${data.user_id}-status`).innerText = "offline";
+        document.getElementById(`${data.user_id}-status`).classList.add("offline-status");
+        document.getElementById(`${data.user_id}-status`).classList.remove("online-status");
+    });
+
+    // Chat save
+    document.querySelector("#chat-form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        var val = document.querySelector("#message").value;
+
+        axios.post('/savechat', {
+            sender_id: sender_id,
+            receiver_id: receiver_id,
+            message: val
+        })
+        .then(function (resp) {
+            if (resp.data.success) {
+                document.querySelector("#message").value = '';
+                let chat = resp.data.data.message;
+                let html = `
+                    <div class="current-user-chat">
+                        <h5>${chat}</h5>
+                    </div>`;
+                chatContainer.insertAdjacentHTML('beforeend', html);
+            
+socket.emit ('newChat', resp.data.data);
+            } else {
+                alert(resp.data.msg);
+            }
+        });
+    });
+    // Listen for incoming messages
+    socket.on('load', function (data) {
+        console.log(sender_id === data.receiver_id)
+        if( sender_id === data.receiver_id){
+            let chat = data.message;
+        let html = `
+            <div class="distance-user-chat">
+                <h5>${chat}</h5>
+            </div>`;
+        chatContainer.insertAdjacentHTML('beforeend', html);
+        scrollToBottom();
+        }
+    });
+
+    //load all chat
+    socket.on("chats",function(data){
+        console.log(data)
+        chatContainer.innerHTML = '';
+        var chatss = data.chats
+        let html = ''
+        chatss.forEach(elem => {
+    let addclass = '';
+    if (elem.sender_id == sender_id) {
+        addclass = 'current-user-chat';
+    } else {
+        addclass = 'distance-user-chat';
+    }
+    html += `
+        <div class='${addclass}'>
+            <h5>${elem.message}</h5>
+        </div>`;
+});
+
+chatContainer.innerHTML = html;  
+scrollToBottom();
+    })
+
+
+    function scrollToBottom() {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+</script>
+<% include ./partial/footer.ejs %>
